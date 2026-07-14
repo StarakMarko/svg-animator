@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <rect id="bg" x="0" y="0" width="400" height="400" fill="#1a1a2e" rx="8"/>
+  <g id="star-group">
+    <polygon id="star" points="200,60 230,150 320,150 245,205 270,295 200,245 130,295 155,205 80,150 170,150" fill="#ffd93d"/>
+    <circle id="dot" cx="200" cy="180" r="15" fill="#ff6b6b"/>
+  </g>
+  <g id="shapes">
+    <rect id="box" x="50" y="300" width="60" height="60" rx="10" fill="#4a9eff"/>
+    <circle id="ball" cx="320" cy="330" r="30" fill="#26d97f"/>
+  </g>
+  <text id="label" x="200" y="390" text-anchor="middle" font-family="Inter, sans-serif" font-size="14" fill="#888">SVG Animator Test</text>
+</svg>

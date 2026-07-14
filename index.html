@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SVG Animator — CSS Keyframe Animation Editor</title>
+  <meta name="description" content="Visual SVG animation editor with timeline keyframes and pure CSS @keyframes export">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ==================== TOOLBAR ==================== -->
+    <header id="toolbar">
+      <button id="btn-open" class="toolbar-btn primary" title="Open SVG file">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 4h4l2 2h6v7H2V4z" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        Open SVG
+      </button>
+      <button id="btn-open-project" class="toolbar-btn project-btn" title="Open saved .svgaproj project">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 2h5l2 2h5v10H2V2z" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M5 8h6M8 5v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Open Project
+      </button>
+      <button id="btn-undo" class="toolbar-btn icon-only" title="Undo (Ctrl+Z)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/></svg>
+      </button>
+      <button id="btn-redo" class="toolbar-btn icon-only" title="Redo (Ctrl+Y)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"/></svg>
+      </button>
+      <div class="toolbar-spacer"></div>
+
+      <button id="btn-save-project" class="toolbar-btn project-btn" title="Save project (.svgaproj) — preserves all animation data">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 2h8l3 3v9H3V2z" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="5" y="2" width="4" height="3" rx="0.5" stroke="currentColor" stroke-width="1.2" fill="none"/><rect x="4" y="9" width="8" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+        Save Project
+      </button>
+      <button id="btn-save" class="toolbar-btn success" title="Export animated SVG with CSS @keyframes">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2v8m0 0l-3-3m3 3l3-3M3 13h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        Export SVG
+      </button>
+      <input type="file" id="file-input" accept=".svg" hidden>
+      <input type="file" id="project-input" accept=".svgaproj" hidden>
+    </header>
+
+
+    <!-- ==================== LAYERS PANEL ==================== -->
+    <aside id="layers-panel">
+      <div class="panel-header">
+        <span class="panel-title">Layers</span>
+        <div class="panel-actions">
+          <button id="btn-group" class="panel-btn" title="Group selected elements">
+            <svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="4" width="5" height="5" rx="1" stroke="currentColor" fill="none" stroke-width="1.2"/><rect x="8" y="4" width="5" height="5" rx="1" stroke="currentColor" fill="none" stroke-width="1.2"/><rect x="3" y="1" width="8" height="12" rx="2" stroke="currentColor" fill="none" stroke-width="1.2" stroke-dasharray="2 1.5"/></svg>
+          </button>
+          <button id="btn-ungroup" class="panel-btn" title="Ungroup selected group">
+            <svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="4" width="5" height="5" rx="1" stroke="currentColor" fill="none" stroke-width="1.2"/><rect x="8" y="4" width="5" height="5" rx="1" stroke="currentColor" fill="none" stroke-width="1.2"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="layer-tree" class="layer-tree"></div>
+    </aside>
+
+    <!-- ==================== CANVAS ==================== -->
+    <main id="canvas-area">
+      <div id="ruler-corner"></div>
+      <div id="ruler-h" class="ruler ruler-h"></div>
+      <div id="ruler-v" class="ruler ruler-v"></div>
+      <div id="canvas-viewport">
+        <div id="canvas-content">
+          <div id="empty-state">
+            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+              <rect x="8" y="8" width="48" height="48" rx="8" stroke="#555" stroke-width="2" stroke-dasharray="6 4"/>
+              <path d="M24 32h16M32 24v16" stroke="#555" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <p>Open an SVG file to start animating</p>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- ==================== PROPERTIES PANEL ==================== -->
+    <aside id="properties-panel">
+      <div class="panel-header">
+        <span class="panel-title">Properties</span>
+      </div>
+      <div id="properties-content">
+        <!-- Position -->
+        <div class="prop-group" data-prop="position">
+          <label class="prop-label-main">Position:</label>
+          <div class="prop-inputs">
+            <input type="number" id="prop-pos-x" step="0.1" class="prop-input" placeholder="x">
+            <span class="prop-unit">x</span>
+            <input type="number" id="prop-pos-y" step="0.1" class="prop-input" placeholder="y">
+            <span class="prop-unit">y</span>
+          </div>
+        </div>
+        <!-- Origin -->
+        <div class="prop-group" data-prop="origin">
+          <label class="prop-label-main">Origin:</label>
+          <div class="prop-inputs">
+            <input type="number" id="prop-origin-x" step="0.1" class="prop-input" placeholder="x">
+            <span class="prop-unit">x</span>
+            <input type="number" id="prop-origin-y" step="0.1" class="prop-input" placeholder="y">
+            <span class="prop-unit">y</span>
+          </div>
+        </div>
+        <!-- Scale -->
+        <div class="prop-group" data-prop="scale">
+          <label class="prop-label-main">Scale:</label>
+          <div class="prop-inputs">
+            <input type="number" id="prop-scale-x" step="0.01" value="1" class="prop-input">
+            <span class="prop-unit">x</span>
+            <input type="number" id="prop-scale-y" step="0.01" value="1" class="prop-input">
+            <span class="prop-unit">y</span>
+            <button id="btn-lock-scale" class="icon-btn active" title="Lock aspect ratio">🔗</button>
+          </div>
+        </div>
+        <!-- Skew -->
+        <div class="prop-group" data-prop="skew">
+          <label class="prop-label-main">Skew:</label>
+          <div class="prop-inputs">
+            <input type="number" id="prop-skew-x" step="0.1" value="0" class="prop-input">
+            <span class="prop-unit">x</span>
+            <input type="number" id="prop-skew-y" step="0.1" value="0" class="prop-input">
+            <span class="prop-unit">y</span>
+          </div>
+        </div>
+        <!-- Rotate -->
+        <div class="prop-group" data-prop="rotate">
+          <label class="prop-label-main">Rotate:</label>
+          <div class="prop-inputs">
+            <input type="number" id="prop-rotate-turns" step="1" value="0" class="prop-input">
+            <span class="prop-unit">turn</span>
+            <input type="number" id="prop-rotate-deg" step="0.1" value="0" class="prop-input">
+            <span class="prop-unit">deg</span>
+          </div>
+        </div>
+        <!-- Opacity -->
+        <div class="prop-group" data-prop="opacity">
+          <label class="prop-label-main">Opacity:</label>
+          <div class="prop-inputs opacity-inputs">
+            <input type="range" id="prop-opacity-slider" min="0" max="100" value="100" class="prop-slider">
+            <input type="number" id="prop-opacity-val" min="0" max="100" value="100" class="prop-input prop-input-sm">
+            <span class="prop-unit">%</span>
+          </div>
+        </div>
+        <!-- Fill -->
+        <div class="prop-group" data-prop="fill">
+          <label class="prop-label-main">Fill:</label>
+          <div class="prop-inputs">
+            <input type="color" id="prop-fill-color" value="#000000" class="prop-color">
+            <span class="prop-unit">#</span>
+            <input type="text" id="prop-fill-hex" value="000000" maxlength="6" class="prop-input prop-input-hex">
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ==================== TIMELINE ==================== -->
+    <section id="timeline-panel">
+      <div id="timeline-toolbar">
+        <div class="transport-controls">
+          <button id="btn-goto-start" class="transport-btn" title="Go to start">⏮</button>
+          <button id="btn-play" class="transport-btn" title="Play / Pause">▶</button>
+          <span id="time-display" class="time-display">0:00.00</span>
+          <!-- Animate dropdown button (matching screenshot) -->
+          <div class="animate-dropdown-wrap">
+            <button id="btn-animate" class="toolbar-btn animate-btn" title="Add animation track to selected element">
+              Animate ▾
+            </button>
+            <div id="animate-dropdown" class="animate-dropdown" hidden>
+              <div class="animate-dropdown-item" data-type="morph">Morph</div>
+              <div class="animate-dropdown-item" data-type="position">Position</div>
+              <div class="animate-dropdown-item" data-type="origin">Origin</div>
+              <div class="animate-dropdown-item" data-type="scale">Scale</div>
+              <div class="animate-dropdown-item" data-type="rotate">Rotate</div>
+              <div class="animate-dropdown-item" data-type="skew">Skew</div>
+              <div class="animate-dropdown-item" data-type="opacity">Opacity</div>
+            </div>
+          </div>
+        </div>
+        <div class="timeline-actions">
+          <button id="btn-add-keyframe" class="toolbar-btn accent sm" title="Add keyframe at current time">◆ Add Key</button>
+          <button id="btn-delete-keyframe" class="toolbar-btn danger sm" title="Delete selected keyframe">✕ Del Key</button>
+        </div>
+        <div class="duration-control">
+          <label>Duration:</label>
+          <input type="number" id="duration-input" value="10" min="1" max="120" step="1" class="prop-input prop-input-sm">
+          <span class="prop-unit">s</span>
+        </div>
+      </div>
+      <div id="timeline-body">
+        <div id="track-labels"></div>
+        <div id="timeline-scroll">
+          <canvas id="timeline-ruler-canvas"></canvas>
+          <div id="tracks-container"></div>
+          <div id="playhead">
+            <div class="playhead-head"></div>
+            <div class="playhead-line"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Context menu for adding animation tracks -->
+  <div id="context-menu" class="context-menu" hidden>
+    <div class="context-menu-header">Add Animation</div>
+    <div class="context-menu-item" data-type="morph">◈ Morph</div>
+    <div class="context-menu-item" data-type="position">↔ Position</div>
+    <div class="context-menu-item" data-type="origin">⊕ Origin</div>
+    <div class="context-menu-item" data-type="scale">⤡ Scale</div>
+    <div class="context-menu-item" data-type="rotate">↻ Rotate</div>
+    <div class="context-menu-item" data-type="skew">◇ Skew</div>
+    <div class="context-menu-item" data-type="opacity">◐ Opacity</div>
+    <div class="context-menu-item" data-type="fill">🎨 Fill</div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
