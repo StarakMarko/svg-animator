@@ -539,10 +539,28 @@ function saveProject() {
     if (trackList.length > 0) animations.push({ elementId, tracks: trackList });
   }
 
+  // Temporarily reset animations to base state to avoid baking them into the SVG
+  const currentTime = state.currentTime;
+  applyAnimationAtTime(0);
+
+  // Clone SVG and strip editor-specific UI (outlines, cursors)
+  const clone = state.svgElement.cloneNode(true);
+  clone.querySelectorAll('*').forEach(el => {
+    el.style.cursor = '';
+    el.style.outline = '';
+    el.style.outlineOffset = '';
+    if (el.getAttribute('style') === '') el.removeAttribute('style');
+  });
+  
+  const currentSvgSource = clone.outerHTML;
+
+  // Restore timeline
+  applyAnimationAtTime(currentTime);
+
   const project = {
     version:    1,
     duration:   state.duration,
-    svgSource:  state.svgSource,
+    svgSource:  currentSvgSource,
     animations,
   };
 
