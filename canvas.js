@@ -59,6 +59,14 @@ function renderSVG(svg) {
   applyZoom();
 }
 
+function getSelectableElement(el) {
+  const parentGroup = el.closest('g');
+  if (parentGroup && state.elements.has(parentGroup.id)) {
+    return parentGroup;
+  }
+  return el;
+}
+
 // ─── Make SVG Elements Clickable ─────────────────────────────────
 function makeClickable(svgEl) {
   svgEl.querySelectorAll('*').forEach(el => {
@@ -67,28 +75,32 @@ function makeClickable(svgEl) {
 
     el.addEventListener('click', (e) => {
       e.stopPropagation();
-      const info = state.elements.get(el.id);
+      const targetEl = getSelectableElement(el);
+      const info = state.elements.get(targetEl.id);
       if (info?.locked) return;
-      state.selectedId = el.id;
-      bus.emit('element:selected', el.id);
+      state.selectedId = targetEl.id;
+      bus.emit('element:selected', targetEl.id);
     });
 
     el.addEventListener('mouseenter', () => {
-      const info = state.elements.get(el.id);
+      const targetEl = getSelectableElement(el);
+      const info = state.elements.get(targetEl.id);
       if (info?.locked) return;
-      if (el.id !== state.selectedId) {
-        el.style.outline = '1px dashed rgba(74,158,255,0.4)';
-        el.style.outlineOffset = '1px';
+      if (targetEl.id !== state.selectedId) {
+        targetEl.style.outline = '1px dashed rgba(74,158,255,0.4)';
+        targetEl.style.outlineOffset = '1px';
       }
     });
 
     el.addEventListener('mouseleave', () => {
-      if (el.id !== state.selectedId) {
-        el.style.outline = '';
-        el.style.outlineOffset = '';
+      const targetEl = getSelectableElement(el);
+      if (targetEl.id !== state.selectedId) {
+        targetEl.style.outline = '';
+        targetEl.style.outlineOffset = '';
       }
     });
   });
+
 
   // Click on canvas background to deselect
   svgEl.addEventListener('click', (e) => {

@@ -53,7 +53,38 @@ export function initLayers() {
     buildTree();
   });
 
-  bus.on('element:selected', highlightSelected);
+  bus.on('element:selected', () => {
+    let changed = false;
+    if (state.selectedId) {
+      const info = state.elements.get(state.selectedId);
+      if (info && info.el) {
+        let parent = info.el.parentElement;
+        while (parent && parent !== state.svgElement && parent.tagName.toLowerCase() !== 'svg') {
+          if (parent.id && state.elements.has(parent.id) && !expandedNodes.has(parent.id)) {
+            expandedNodes.add(parent.id);
+            changed = true;
+          }
+          parent = parent.parentElement;
+        }
+      }
+    }
+    
+    if (changed) {
+      buildTree();
+    } else {
+      highlightSelected();
+    }
+    
+    // Auto-scroll to selected element in the layers tree
+    if (state.selectedId) {
+      setTimeout(() => {
+        const item = treeContainer.querySelector(`.layer-item[data-id="${state.selectedId}"]`);
+        if (item) {
+          item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }, 10);
+    }
+  });
   bus.on('tracks:changed', () => buildTree());
 }
 
