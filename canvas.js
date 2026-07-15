@@ -78,15 +78,32 @@ function makeClickable(svgEl) {
       const targetEl = getSelectableElement(el);
       const info = state.elements.get(targetEl.id);
       if (info?.locked) return;
-      state.selectedId = targetEl.id;
-      bus.emit('element:selected', targetEl.id);
+      
+      if (e.ctrlKey || e.metaKey) {
+        if (state.selectedIds.has(targetEl.id)) {
+          state.selectedIds.delete(targetEl.id);
+          // If we removed the primary selected element, pick another one
+          if (state.selectedId === targetEl.id) {
+            state.selectedId = state.selectedIds.size > 0 ? Array.from(state.selectedIds).pop() : null;
+          }
+        } else {
+          state.selectedIds.add(targetEl.id);
+          state.selectedId = targetEl.id;
+        }
+      } else {
+        state.selectedIds.clear();
+        state.selectedIds.add(targetEl.id);
+        state.selectedId = targetEl.id;
+      }
+      
+      bus.emit('element:selected', state.selectedId);
     });
 
     el.addEventListener('mouseenter', () => {
       const targetEl = getSelectableElement(el);
       const info = state.elements.get(targetEl.id);
       if (info?.locked) return;
-      if (targetEl.id !== state.selectedId) {
+      if (!state.selectedIds.has(targetEl.id)) {
         targetEl.style.outline = '1px dashed rgba(74,158,255,0.4)';
         targetEl.style.outlineOffset = '1px';
       }
@@ -94,7 +111,7 @@ function makeClickable(svgEl) {
 
     el.addEventListener('mouseleave', () => {
       const targetEl = getSelectableElement(el);
-      if (targetEl.id !== state.selectedId) {
+      if (!state.selectedIds.has(targetEl.id)) {
         targetEl.style.outline = '';
         targetEl.style.outlineOffset = '';
       }
@@ -105,6 +122,7 @@ function makeClickable(svgEl) {
   // Click on canvas background to deselect
   svgEl.addEventListener('click', (e) => {
     if (e.target === svgEl) {
+      state.selectedIds.clear();
       state.selectedId = null;
       bus.emit('element:selected', null);
     }
@@ -122,8 +140,8 @@ function updateCanvasSelection(selectedId) {
   }
 
   // Apply new highlight
-  if (selectedId) {
-    const info = state.elements.get(selectedId);
+  for (const id of state.selectedIds) {
+    const info = state.elements.get(id);
     if (info) {
       info.el.style.outline = '2px dashed #4a9eff';
       info.el.style.outlineOffset = '2px';

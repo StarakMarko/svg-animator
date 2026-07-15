@@ -2,7 +2,7 @@
    SVG ANIMATOR — Layers Panel
    Tree view, selection, group/ungroup, context menu
    ================================================================ */
-import { state, bus, addTrack, removeTrack } from './app.js';
+import { state, bus, addTrack, removeTrack, pushUndo } from './app.js';
 
 const ICONS = {
   group:    '📁',
@@ -50,6 +50,10 @@ export function initLayers() {
   bus.on('svg:loaded', () => {
     expandedNodes.clear();
     expandedNodes.add('__canvas__');
+    buildTree();
+  });
+
+  bus.on('dom:changed', () => {
     buildTree();
   });
 
@@ -159,7 +163,7 @@ function createLayerItem(id, name, type, depth, hasChildren, isExpanded = false)
   const div = document.createElement('div');
   div.className = 'layer-item';
   div.dataset.id = id;
-  if (id === state.selectedId) div.classList.add('selected');
+  if (state.selectedIds.has(id)) div.classList.add('selected');
 
   // Indent
   const indent = document.createElement('span');
@@ -246,11 +250,26 @@ function createLayerItem(id, name, type, depth, hasChildren, isExpanded = false)
   // Click to select
   div.addEventListener('click', (e) => {
     if (id === '__canvas__') {
+      state.selectedIds.clear();
       state.selectedId = null;
       bus.emit('element:selected', null);
     } else {
-      state.selectedId = id;
-      bus.emit('element:selected', id);
+      if (e.ctrlKey || e.metaKey) {
+        if (state.selectedIds.has(id)) {
+          state.selectedIds.delete(id);
+          if (state.selectedId === id) {
+            state.selectedId = state.selectedIds.size > 0 ? Array.from(state.selectedIds).pop() : null;
+          }
+        } else {
+          state.selectedIds.add(id);
+          state.selectedId = id;
+        }
+      } else {
+        state.selectedIds.clear();
+        state.selectedIds.add(id);
+        state.selectedId = id;
+      }
+      bus.emit('element:selected', state.selectedId);
     }
   });
 
@@ -351,7 +370,7 @@ function showContextMenu(e, elementId) {
 // ─── Highlight Selected ─────────────────────────────────────────
 function highlightSelected() {
   treeContainer.querySelectorAll('.layer-item').forEach(item => {
-    item.classList.toggle('selected', item.dataset.id === state.selectedId);
+    item.classList.toggle('selected', state.selectedIds.has(item.dataset.id));
   });
 }
 
@@ -372,58 +391,152 @@ function toggleVisibility(id) {
 }
 
 // ─── Group / Ungroup ─────────────────────────────────────────────
-function groupSelected() {
-  if (!state.selectedId || !state.svgElement) return;
-  const info = state.elements.get(state.selectedId);
-  if (!info) return;
+export function groupSelected() {
+  if (state.selectedIds.size === 0 || !state.svgElement) return;
+  
+  // Find a common parent
+  let parent = null;
+  const elementsToGroup = [];
+  
+  // We need to insert the group at the highest index (lowest in DOM tree = visually bottom) 
+  // or at the location of the first selected element. Let's use the first one's parent.
+  for (const id of state.selectedIds) {
+    const info = state.elements.get(id);
+    if (info && info.el) {
+      if (!parent) parent = info.el.parentElement;
+      elementsToGroup.push(info.el);
+    }
+  }
+  
+  if (elementsToGroup.length === 0) return;
+  
+  pushUndo();
 
-  const el = info.el;
-  const parent = el.parentElement;
-
-  // Create new <g> and wrap the element
+  // Create new <g> and wrap the elements
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-  parent.insertBefore(g, el);
-  g.appendChild(el);
+  // Insert before the first element to maintain rough DOM position
+  parent.insertBefore(g, elementsToGroup[0]);
+  
+  for (const el of elementsToGroup) {
+    g.appendChild(el);
+  }
 
-  // Re-walk the SVG
-  state.elements.clear();
-  state.nextId = 1;
+  // Assign ID immediately so it can be selected
+  const newId = `svga-${state.nextId++}`;
+  g.id = newId;
+
+  // Re-walk from root to update depths and parents, preserving other state
   for (const child of state.svgElement.children) {
     import('./app.js').then(m => m.walkSVG(child));
   }
 
-  // Small delay for async import, then rebuild
   setTimeout(() => {
-    bus.emit('svg:loaded', state.svgElement);
+    state.selectedIds.clear();
+    state.selectedIds.add(newId);
+    state.selectedId = newId;
+    bus.emit('dom:changed');
   }, 50);
 }
 
-function ungroupSelected() {
-  if (!state.selectedId || !state.svgElement) return;
-  const info = state.elements.get(state.selectedId);
-  if (!info || info.type !== 'group') return;
+export function ungroupSelected() {
+  if (state.selectedIds.size === 0 || !state.svgElement) return;
+  
+  pushUndo();
+  
+  let changed = false;
+  for (const id of state.selectedIds) {
+    const info = state.elements.get(id);
+    if (!info || info.type !== 'group') continue;
 
-  const g = info.el;
-  const parent = g.parentElement;
+    const g = info.el;
+    const parent = g.parentElement;
 
-  // Move all children out of the group
-  while (g.firstChild) {
-    parent.insertBefore(g.firstChild, g);
+    // Move all children out of the group
+    while (g.firstChild) {
+      parent.insertBefore(g.firstChild, g);
+    }
+    parent.removeChild(g);
+
+    // Remove any animations on the group
+    state.animations.delete(id);
+    state.elements.delete(id);
+    changed = true;
   }
-  parent.removeChild(g);
+  
+  if (!changed) return;
 
-  // Remove any animations on the group
-  state.animations.delete(state.selectedId);
+  state.selectedIds.clear();
   state.selectedId = null;
 
-  // Re-walk
-  state.elements.clear();
-  state.nextId = 1;
   for (const child of state.svgElement.children) {
     import('./app.js').then(m => m.walkSVG(child));
   }
 
   setTimeout(() => {
-    bus.emit('svg:loaded', state.svgElement);
+    bus.emit('dom:changed');
+  }, 50);
+}
+
+export function deleteSelected() {
+  if (state.selectedIds.size === 0) return;
+  
+  pushUndo();
+  
+  for (const id of state.selectedIds) {
+    const info = state.elements.get(id);
+    if (info && info.el && info.el.parentNode) {
+      info.el.parentNode.removeChild(info.el);
+    }
+    state.elements.delete(id);
+    state.animations.delete(id);
+  }
+  
+  state.selectedIds.clear();
+  state.selectedId = null;
+  
+  for (const child of state.svgElement.children) {
+    import('./app.js').then(m => m.walkSVG(child));
+  }
+
+  setTimeout(() => {
+    bus.emit('dom:changed');
+  }, 50);
+}
+
+export function duplicateSelected() {
+  if (state.selectedIds.size === 0) return;
+  
+  pushUndo();
+  
+  const newlySelected = new Set();
+  
+  for (const id of state.selectedIds) {
+    const info = state.elements.get(id);
+    if (info && info.el && info.el.parentNode) {
+      const clone = info.el.cloneNode(true);
+      
+      // Strip IDs from clone and all its children so walkSVG generates new ones
+      clone.removeAttribute('id');
+      clone.querySelectorAll('*').forEach(child => child.removeAttribute('id'));
+      
+      info.el.parentNode.insertBefore(clone, info.el.nextSibling);
+      
+      // We don't know the newly generated ID yet, walkSVG will assign it
+      // To select it, we could give it a temporary ID
+      const tempId = `svga-${state.nextId++}`;
+      clone.id = tempId;
+      newlySelected.add(tempId);
+    }
+  }
+  
+  state.selectedIds = newlySelected;
+  state.selectedId = Array.from(newlySelected).pop();
+  
+  for (const child of state.svgElement.children) {
+    import('./app.js').then(m => m.walkSVG(child));
+  }
+
+  setTimeout(() => {
+    bus.emit('dom:changed');
   }, 50);
 }

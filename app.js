@@ -2,7 +2,7 @@
    SVG ANIMATOR — Core Application
    State management, event bus, file I/O, initialization
    ================================================================ */
-import { initLayers }     from './layers.js';
+import { initLayers, groupSelected, ungroupSelected, deleteSelected, duplicateSelected } from './layers.js';
 import { initCanvas }     from './canvas.js';
 import { initTimeline }   from './timeline.js';
 import { initProperties } from './properties.js';
@@ -15,7 +15,8 @@ export const state = {
   svgElement:    null,    // The <svg> DOM element on canvas
   svgSource:     '',      // Original SVG markup
   elements:      new Map(), // id → { el, name, type, parentId, locked, visible }
-  selectedId:    null,    // Currently selected element id
+  selectedId:    null,    // Currently/Primary selected element id
+  selectedIds:   new Set(), // All currently selected element ids
   animations:    new Map(), // elementId → Map( property → Keyframe[] )
   currentTime:   0,       // Playhead position in seconds
   duration:      10,      // Total animation duration
@@ -44,40 +45,77 @@ const _undoStack = [];
 const _redoStack = [];
 const MAX_UNDO   = 60;
 
-function snapshotAnimations() {
-  const snap = new Map();
+function snapshotState() {
+  const snapAnims = new Map();
   for (const [elId, tracks] of state.animations) {
     const t = new Map();
-    for (const [prop, kfs] of tracks)
+    for (const [prop, kfs] of tracks) {
       t.set(prop, kfs.map(kf => ({ ...kf, value: structuredClone(kf.value) })));
-    snap.set(elId, t);
+    }
+    snapAnims.set(elId, t);
   }
-  return snap;
+  
+  return {
+    svgHTML: state.svgElement ? state.svgElement.innerHTML : '',
+    nextId: state.nextId,
+    animations: snapAnims,
+    lockedStates: Array.from(state.elements.values()).map(info => ({ id: info.el.id, locked: info.locked, visible: info.visible })),
+    selectedIds: Array.from(state.selectedIds),
+    selectedId: state.selectedId,
+  };
 }
 
-/** Push a deep snapshot of animations onto the undo stack. Call BEFORE mutating. */
+/** Push a deep snapshot of animations and DOM onto the undo stack. Call BEFORE mutating. */
 export function pushUndo() {
-  _undoStack.push(snapshotAnimations());
+  _undoStack.push(snapshotState());
   if (_undoStack.length > MAX_UNDO) _undoStack.shift();
   _redoStack.length = 0; // clear redo stack on new action
 }
 
-export function undo() {
-  if (_undoStack.length === 0) return;
-  _redoStack.push(snapshotAnimations());
-  state.animations = _undoStack.pop();
+function restoreState(snap) {
+  if (state.svgElement && snap.svgHTML !== undefined) {
+    state.svgElement.innerHTML = snap.svgHTML;
+    state.nextId = snap.nextId;
+    
+    // Re-walk to recreate elements map
+    state.elements.clear();
+    for (const child of state.svgElement.children) {
+      walkSVG(child);
+    }
+    
+    // Restore lock/visibility
+    for (const ls of snap.lockedStates) {
+      const info = state.elements.get(ls.id);
+      if (info) {
+        info.locked = ls.locked;
+        info.visible = ls.visible;
+        if (!info.visible) info.el.style.display = 'none';
+      }
+    }
+    
+    state.selectedIds = new Set(snap.selectedIds);
+    state.selectedId = snap.selectedId;
+    
+    // Trigger canvas to re-add click listeners to new DOM nodes
+    bus.emit('dom:changed');
+  }
+  
+  state.animations = snap.animations;
   applyAnimationAtTime(state.currentTime);
   bus.emit('tracks:changed', null);
   bus.emit('undo', null);
 }
 
+export function undo() {
+  if (_undoStack.length === 0) return;
+  _redoStack.push(snapshotState());
+  restoreState(_undoStack.pop());
+}
+
 export function redo() {
   if (_redoStack.length === 0) return;
-  _undoStack.push(snapshotAnimations());
-  state.animations = _redoStack.pop();
-  applyAnimationAtTime(state.currentTime);
-  bus.emit('tracks:changed', null);
-  bus.emit('undo', null);
+  _undoStack.push(snapshotState());
+  restoreState(_redoStack.pop());
 }
 
 
@@ -115,13 +153,15 @@ export function walkSVG(el, parentId = null, depth = 0) {
   }
 
 
+  const existing = state.elements.get(id);
+
   state.elements.set(id, {
     el,
     name,
     type: tag === 'g' ? 'group' : tag,
     parentId,
-    locked: false,
-    visible: true,
+    locked: existing ? existing.locked : false,
+    visible: existing ? existing.visible : true,
     depth,
   });
 
@@ -437,6 +477,7 @@ export function loadSVGString(svgString) {
   state.elements.clear();
   state.animations.clear();
   state.selectedId = null;
+  state.selectedIds.clear();
   state.selectedKeyframe = null;
   state.selectedTrack = null;
   state.currentTime = 0;
@@ -624,6 +665,23 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (e.code === 'KeyY') {
         e.preventDefault();
         redo();
+      } else if (e.code === 'KeyD') {
+        e.preventDefault();
+        duplicateSelected();
+      } else if (e.code === 'KeyG') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          ungroupSelected();
+        } else {
+          groupSelected();
+        }
+      }
+    } else {
+      if (e.code === 'Delete' || e.code === 'Backspace') {
+        if (state.selectedIds && state.selectedIds.size > 0) {
+          e.preventDefault();
+          deleteSelected();
+        }
       }
     }
   });
