@@ -23,6 +23,9 @@ const ICONS = {
 
 let treeContainer;
 let contextMenuTarget = null;
+const expandedNodes = new Set(['__canvas__']);
+
+
 
 export function initLayers() {
   treeContainer = document.getElementById('layer-tree');
@@ -44,7 +47,12 @@ export function initLayers() {
   });
 
   // Events
-  bus.on('svg:loaded', buildTree);
+  bus.on('svg:loaded', () => {
+    expandedNodes.clear();
+    expandedNodes.add('__canvas__');
+    buildTree();
+  });
+
   bus.on('element:selected', highlightSelected);
   bus.on('tracks:changed', () => buildTree());
 }
@@ -58,17 +66,24 @@ function buildTree() {
   const fragment = document.createDocumentFragment();
 
   // Add a root "Canvas" node
-  const rootItem = createLayerItem('__canvas__', 'Canvas', 'group', 0, true);
+  const rootExpanded = expandedNodes.has('__canvas__');
+  const rootItem = createLayerItem('__canvas__', 'Canvas', 'group', 0, true, rootExpanded);
   fragment.appendChild(rootItem);
 
-  // Build children
-  for (const child of state.svgElement.children) {
-    buildTreeNode(child, fragment, 1);
+  if (rootExpanded) {
+    // Build children in reverse order (top layer = highest in DOM)
+    const children = Array.from(state.svgElement.children).reverse();
+    for (const child of children) {
+      buildTreeNode(child, fragment, 1);
+    }
   }
+
+
 
   treeContainer.appendChild(fragment);
   highlightSelected();
 }
+
 
 function buildTreeNode(el, container, depth) {
   const tag = el.tagName?.toLowerCase();
@@ -82,27 +97,34 @@ function buildTreeNode(el, container, depth) {
   const hasChildren = isGroup && el.children.length > 0;
   const hasTracks = state.animations.has(id) && state.animations.get(id).size > 0;
 
-  const item = createLayerItem(id, info.name, info.type, depth, hasChildren);
+  const isExpanded = expandedNodes.has(id);
+  const item = createLayerItem(id, info.name, info.type, depth, hasChildren || hasTracks, isExpanded);
   container.appendChild(item);
 
-  // Show animation tracks under this element
-  if (hasTracks) {
-    const tracks = state.animations.get(id);
-    for (const [prop] of tracks) {
-      const trackItem = createTrackItem(id, prop, depth + 1);
-      container.appendChild(trackItem);
+  if (isExpanded) {
+    // Show animation tracks under this element
+    if (hasTracks) {
+      const tracks = state.animations.get(id);
+      for (const [prop] of tracks) {
+        const trackItem = createTrackItem(id, prop, depth + 1);
+        container.appendChild(trackItem);
+      }
     }
+
+    // Recurse into children in reverse order
+    if (isGroup) {
+      const children = Array.from(el.children).reverse();
+      for (const child of children) {
+        buildTreeNode(child, container, depth + 1);
+      }
+    }
+
   }
 
-  // Recurse into children
-  if (isGroup) {
-    for (const child of el.children) {
-      buildTreeNode(child, container, depth + 1);
-    }
-  }
 }
 
-function createLayerItem(id, name, type, depth, hasChildren) {
+
+function createLayerItem(id, name, type, depth, hasChildren, isExpanded = false) {
   const div = document.createElement('div');
   div.className = 'layer-item';
   div.dataset.id = id;
@@ -116,9 +138,25 @@ function createLayerItem(id, name, type, depth, hasChildren) {
 
   // Expand arrow
   const expand = document.createElement('span');
-  expand.className = `layer-expand ${hasChildren ? 'expanded' : 'hidden'}`;
+  expand.className = `layer-expand ${hasChildren ? (isExpanded ? 'expanded' : '') : 'hidden'}`;
   expand.textContent = '▶';
+  
+  if (hasChildren) {
+    expand.style.cursor = 'pointer';
+    expand.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (expandedNodes.has(id)) {
+        expandedNodes.delete(id);
+      } else {
+        expandedNodes.add(id);
+      }
+      buildTree();
+    });
+  }
+  
   div.appendChild(expand);
+
+
 
   // Icon
   const icon = document.createElement('span');

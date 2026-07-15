@@ -101,10 +101,19 @@ export function walkSVG(el, parentId = null, depth = 0) {
   const tag = el.tagName?.toLowerCase();
   if (!tag || !SVG_TAGS.includes(tag)) return;
 
-  const id = assignId(el);
-  const name = el.getAttribute('id') !== id
-    ? (el.getAttribute('data-name') || el.id || tag.charAt(0).toUpperCase() + tag.slice(1))
-    : tag.charAt(0).toUpperCase() + tag.slice(1);
+  const originalId = el.getAttribute('id');
+  const dataName   = el.getAttribute('data-name');
+  const id         = assignId(el);
+
+  let name;
+  if (dataName) {
+    name = dataName;
+  } else if (originalId && !originalId.startsWith('svga-')) {
+    name = originalId;
+  } else {
+    name = tag.charAt(0).toUpperCase() + tag.slice(1);
+  }
+
 
   state.elements.set(id, {
     el,
